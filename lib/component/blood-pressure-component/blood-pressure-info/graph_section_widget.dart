@@ -1,12 +1,31 @@
 // lib/screen/bp/graph_section.dart
+import 'dart:math';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:novel/primary-color.dart';
+import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
-import 'package:syncfusion_flutter_charts/sparkcharts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-late TooltipBehavior _tooltipBehavior;
+/// ─────────────────────────────────────────────
+/// 데이터 모델
+/// ─────────────────────────────────────────────
+class BPPoint {
+  final DateTime date;
+  final int systolic;   // 수축기
+  final int diastolic;  // 이완기
+  final int pulse;      // 맥박
 
+  BPPoint({
+    required this.date,
+    required this.systolic,
+    required this.diastolic,
+    required this.pulse,
+  });
+}
+
+/// ─────────────────────────────────────────────
+/// 그래프 섹션
+/// ─────────────────────────────────────────────
 class GraphSection extends StatefulWidget {
   const GraphSection({super.key});
 
@@ -15,261 +34,207 @@ class GraphSection extends StatefulWidget {
 }
 
 class _GraphSectionState extends State<GraphSection> {
+  static const int kWindow = 7; // 화면에 항상 보여줄 X축 틱 수
+  final List<BPPoint> _seriesData = [];
+  ChartSeriesController? _bpRangeCtrl;
+  ChartSeriesController? _pulseLineCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _generateDummyData(); // 더미 100개
+  }
+
+  /// 더미 데이터 100개 (12시간 간격)
+  void _generateDummyData() {
+    final now = DateTime.now();
+    final random = Random();
+    for (int i = 0; i < 100; i++) {
+      final date = now.subtract(Duration(hours: 12 * (100 - i)));
+      final sys = 110 + random.nextInt(40);               // 110~149
+      final dia = sys - (20 + random.nextInt(20));        // sys - (20~39)
+      final pulse = 60 + random.nextInt(40);              // 60~99
+      _seriesData.add(BPPoint(date: date, systolic: sys, diastolic: dia, pulse: pulse));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    bool showSys = true;
-    bool showPulse = true;
-
-    List<ChartData> data = [
-      // 최근 1주일 값
-      ChartData('25.09.01', 160, 128, 70),
-      ChartData('25.09.03', 140, 100, 74),
-      ChartData('25.09.04', 150, 120, 90),
-      ChartData('25.09.05', 145, 130, 81),
-      ChartData('25.09.06', 145, 130, 81),
-    ];
-
     return Container(
-      margin: EdgeInsets.only(top: 30),
-      height: 240.h,
+      margin: EdgeInsets.only(top: 20.h),
+      height: 270.h,
       color: Colors.white,
-      // 배경색
       child: Column(
         children: [
+          // ── 상단 범례
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(40),
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 3, offset: Offset(0,1))],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildLegendDot(const Color(0xFF87CEFA), '수축, 이완'),
+                  const SizedBox(width: 12),
+                  _buildLegendDot(const Color(0xFFFFC0CC), '맥박'),
+                ],
+              ),
+            ),
+          ),
+
+          // ── 차트
           Expanded(
             child: SfCartesianChart(
-              tooltipBehavior: TooltipBehavior(
-                enable: true,
-                canShowMarker: false,
-                activationMode: ActivationMode.singleTap,
-              ),
-              legend: Legend(isVisible: false),
+              plotAreaBorderWidth: 0,
+              legend: const Legend(isVisible: false),
 
-              annotations: [
-                CartesianChartAnnotation(
-                  region: AnnotationRegion.plotArea,
-                  // 플롯 영역 안쪽
-                  coordinateUnit: CoordinateUnit.logicalPixel,
-                  // 픽셀 좌표로 배치
-                  x: 295.w,
-                  // 좌측에서 12px
-                  y: 20.h,
-                  // 위에서 12px
-                  widget: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
+              // 트랙볼: builder만 사용(tooltipSettings 미사용)
+              trackballBehavior: TrackballBehavior(
+                enable: true,
+                activationMode: ActivationMode.singleTap,
+                lineType: TrackballLineType.vertical,
+                tooltipDisplayMode: TrackballDisplayMode.groupAllPoints,
+                builder: (BuildContext context, TrackballDetails details) {
+                  // groupAllPoints 모드에 안전한 인덱스 추출
+                  final g = details.groupingModeInfo;
+                  final list = g?.currentPointIndices;
+                  final int? idx = (list != null && list.isNotEmpty)
+                      ? list.first
+                      : details.pointIndex;
+
+                  if (idx == null || idx < 0 || idx >= _seriesData.length) {
+                    return const SizedBox.shrink();
+                  }
+                  final p = _seriesData[idx];
+
+                  return Container(
+                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.85),
+                      color: Colors.black.withOpacity(0.85),
                       borderRadius: BorderRadius.circular(8),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black12, blurRadius: 2),
-                      ],
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // 수축
-                        GestureDetector(
-                          onTap: () => setState(() => showSys = !showSys),
-                          child: Opacity(
-                            opacity: showSys ? 1.0 : 0.4,
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xffB2D7FF),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                const Text(
-                                  '수축, 이완',
-                                  style: TextStyle(fontSize: 8),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // 맥박
-                        GestureDetector(
-                          onTap: () => setState(() => showPulse = !showPulse),
-                          child: Opacity(
-                            opacity: showPulse ? 1.0 : 0.4,
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xffFFC0CC),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                const Text('맥박',style: TextStyle(fontSize: 8),),
-                              ],
-                            ),
-                          ),
-                        ),
+                        Text(DateFormat('MM/dd HH:mm').format(p.date),
+                            style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                        const SizedBox(height: 2),
+                        const SizedBox(height: 2),
+                        Text('수축기 혈압: ${p.systolic} mmHg',
+                            style: const TextStyle(color: Colors.white)),
+                        Text('이완기 혈압: ${p.diastolic} mmHg',
+                            style: const TextStyle(color: Colors.white)),
+                        Text('맥박: ${p.pulse} bpm',
+                            style: const TextStyle(color: Colors.white)),
                       ],
                     ),
-                  ),
-                ),
-              ],
-
-              // 툴팁 렌더링
-              onTooltipRender: (TooltipArgs args) {
-                final si = (args.seriesIndex ?? 0).toInt(); // 0: 혈압, 1: 맥박
-                final pi = (args.pointIndex ?? 0).toInt();
-
-                if (pi < 0 || pi >= data.length) return;
-                final d = data[pi];
-
-                // 헤더에 X축 라벨(요일) 표시
-                args.header = d.x;
-
-                if (si == 1) {
-                  // 맥박 라인 툴팁
-                  args.text = '맥박: ${d.bpm.toStringAsFixed(0)} bpm';
-                } else {
-                  // 혈압 범위 칼럼 툴팁
-                  args.text =
-                      '수축기: ${d.y.toStringAsFixed(0)} mmHg \n이완기: ${d.relaxation.toStringAsFixed(0)} mmHg';
-                }
-              },
-              primaryXAxis: CategoryAxis(
-                majorGridLines: MajorGridLines(width: 0),
-                majorTickLines: MajorTickLines(size: 0),
-                axisLine: AxisLine(width: 0),
-                labelStyle: TextStyle(
-                  color: const Color(0xFF111111),
-                  fontSize: 10,
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w600,
-                  height: 1.10,
-                  letterSpacing: -0.50,
-                ),
-
-                // labelRotation: 30,
-                // 음수: 오른쪽으로 기울어짐, 필요시 -45 등으로 조정
-                edgeLabelPlacement: EdgeLabelPlacement.shift,
-                axisLabelFormatter: (AxisLabelRenderDetails details) {
-                  // 숫자 폭과 유사한 figure space 2개로 살짝 오른쪽 밀기
-                  const pad = '\u2007';
-                  return ChartAxisLabel(
-                    '$pad${details.text}',
-                    details.textStyle,
                   );
                 },
               ),
 
-              primaryYAxis: NumericAxis(
-                labelStyle: TextStyle(
-                    color: const Color(0xFF111111),
-                    fontSize: 10,
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w400,
-                    height: 1.10,
-                    letterSpacing: -0.50,
+              // X축: 카테고리형 시계열 + 항상 7틱
+              primaryXAxis: DateTimeCategoryAxis(
+                dateFormat: DateFormat('MM-dd\nHH:mm'),
+                intervalType: DateTimeIntervalType.minutes,
+                autoScrollingDelta: kWindow,              // ← 항상 7개 보이기
+                autoScrollingMode: AutoScrollingMode.end,
+                edgeLabelPlacement: EdgeLabelPlacement.shift,
+                majorTickLines: const MajorTickLines(size: 0),
+                axisLine: const AxisLine(width: 0),
+                majorGridLines: const MajorGridLines(width: 0.5),
+                labelStyle: const TextStyle(
+                  color: Color(0xFF111111), fontSize: 10, height: 1.1, letterSpacing: -0.5, fontWeight: FontWeight.w400,
                 ),
-                // todo 80, 120 숫자 변경
-                axisLabelFormatter: (AxisLabelRenderDetails args) {
-                  if (args.value == 80 || args.value == 120) {
-                    return ChartAxisLabel(
-                      args.text,
-                      const TextStyle(
-                        color: Color(0xff7DBA68),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    );
-                  }
-                  return ChartAxisLabel(
-                    args.text,
-                    const TextStyle(color: Colors.black),
-                  );
-                },
-                // todo 혈압 그래프
+              ),
+
+              // Y축: 혈압/맥박 공용
+              primaryYAxis: NumericAxis(
                 minimum: 60,
                 maximum: 200,
                 interval: 20,
-                plotBands: <PlotBand>[
-                  // 수축기 120 기준선 (빨간 점선)
+                majorGridLines: const MajorGridLines(width: 0.5),
+                labelStyle: const TextStyle(
+                  color: Color(0xFF111111), fontSize: 10, height: 1.1, letterSpacing: -0.5, fontWeight: FontWeight.w400,
+                ),
+                plotBands: const [
                   PlotBand(
-                    start: 120,
-                    end: 120,
-                    dashArray: <double>[5, 10],
-                    textStyle: TextStyle(
-                      fontWeight: FontWeight.w400
-                    ),
-                    // start=end 로 ‘선’처럼 사용
-                    isVisible: true,
-                    borderWidth: 1,
-                    borderColor: Color(0xff7DBA68),
-                    color: Colors.transparent, // 배경은 투명
+                    start: 120, end: 120,
+                    isVisible: true, dashArray: [5, 10],
+                    borderWidth: 1, borderColor: Color(0xff7DBA68),
+                    color: Colors.transparent,
                   ),
-                  // 정상범위(90~119) 배경 하이라이트
                   PlotBand(
-                    start: 80,
-                    end: 80,
-                    borderWidth: 1,
-                    borderColor: Color(0xff7DBA68),
-                    isVisible: true,
-                    dashArray: <double>[5, 10],
+                    start: 80, end: 80,
+                    isVisible: true, dashArray: [5, 10],
+                    borderWidth: 1, borderColor: Color(0xff7DBA68),
+                    color: Colors.transparent,
                   ),
                 ],
               ),
-              enableSideBySideSeriesPlacement: true,
-              series: <CartesianSeries>[
-                RangeColumnSeries<ChartData, String>(
-                  color: Color(0xffB2D7FF),
-                  name: "혈압",
-                  width: 0.1,
-                  dataSource: data,
-                  xValueMapper: (ChartData data, _) => data.x,
-                  lowValueMapper: (ChartData data, _) => data.relaxation,
-                  highValueMapper: (ChartData data, _) => data.y,
+
+              // 시리즈: RangeColumn(혈압), Line(맥박)
+              series: [
+                RangeColumnSeries<BPPoint, DateTime>(
+                  name: '혈압(수축~이완)',
+                  width: 0.15,
+                  spacing: 0.25,
+                  dataSource: _seriesData,
+                  xValueMapper: (d, _) => d.date,
+                  lowValueMapper: (d, _) => d.diastolic.toDouble(),
+                  highValueMapper: (d, _) => d.systolic.toDouble(),
+                  borderRadius: const BorderRadius.all(Radius.circular(4)),
+                  onRendererCreated: (ctrl) => _bpRangeCtrl = ctrl,
+                  color: const Color(0xFF87CEFA)
                 ),
-                // 맥박
-                SplineSeries<ChartData, String>(
+                LineSeries<BPPoint, DateTime>(
                   name: '맥박',
-                  opacity: 1,
+                  dataSource: _seriesData,
+                  xValueMapper: (d, _) => d.date,
+                  yValueMapper: (d, _) => d.pulse.toDouble(),
                   width: 2,
-                  dataSource: data,
-                  color: Color(0xffFFC0CC),
-                  xValueMapper: (ChartData d, _) => d.x,
-                  yValueMapper: (ChartData d, _) => d.bpm,
-                  enableTooltip: true,
                   markerSettings: const MarkerSettings(
-                    isVisible: true,
-                    width: 6,
-                    height: 6,
-                    shape: DataMarkerType.circle,
+                    isVisible: true, width: 6, height: 6, shape: DataMarkerType.circle,
                   ),
+                  onRendererCreated: (ctrl) => _pulseLineCtrl = ctrl,
+                  color: const Color(0xFFFF7DA0),
                 ),
               ],
+
+              // 확대/줌 비활성, 가로 스크롤만
+              zoomPanBehavior: ZoomPanBehavior(
+                enablePanning: true,
+                enablePinching: false,
+                enableDoubleTapZooming: false,
+                zoomMode: ZoomMode.x,
+              ),
             ),
           ),
         ],
       ),
     );
   }
-}
 
-class ChartData {
-  ChartData(this.x, this.y, this.relaxation, this.bpm);
-
-  // 요일
-  final String x;
-
-  // 수축기 혈압, 이완기 혈압
-  final double y;
-  final double relaxation;
-
-  // 맥박
-  final double bpm;
+  /// 범례 도형
+  Widget _buildLegendDot(Color color, String text) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration:BoxDecoration(shape: BoxShape.circle, color: color),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: const TextStyle(fontSize: 10, color: Colors.black87, fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
 }

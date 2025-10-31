@@ -9,10 +9,12 @@ import 'package:novel/iPhone_top.dart';
 import 'package:novel/model/TempBpStore.dart';
 import 'package:novel/screen/bp_input_screen.dart';
 
+import '../component/blood-pressure-component/blood-pressure-info/graph_section_widget.dart';
 import '../component/blood-pressure-component/bp-event-history/DateBarWithCalendarButton.dart';
 import '../component/blood-pressure-component/blood-pressure-info/guidance_panel_widget.dart';
 import '../component/blood-pressure-component/blood-pressure-info/pressure_monitoring_widget.dart';
-import '../component/blood-pressure-component/blood-pressure-info/sliding_chart_widget.dart';
+
+// import '../component/blood-pressure-component/blood-pressure-info/sliding_chart_widget.dart';
 import '../component/blood-pressure-component/blood-pressure-info/summary_row_widget.dart';
 import '../component/blood-pressure-component/bp-history/bp_app_bar_widget.dart';
 import '../component/blood-pressure-component/bp-history/bp_log_sheet_widget.dart';
@@ -90,8 +92,8 @@ class _BloodPressureInfoState extends State<BloodPressureInfo> {
                   ),
                   SummaryRow(bpRecord: bpRecordsFirst),
                   PressureRow(bpRecord: bpRecordsFirst),
-                  // GraphSection(),
-                  SlidingChart(),
+                  GraphSection(),
+                  // SlidingChart(),
                   Container(
                     width: double.infinity,
                     height: 60.h,
